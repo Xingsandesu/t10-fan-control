@@ -2,7 +2,7 @@ FROM quay.io/pypa/manylinux_2_34_x86_64
 
 # 安装 Python 和 pip
 RUN yum update -y && \
-    yum install -y python3 python3-pip && \
+    yum install -y python3 python3-pip python-devel && \
     yum clean all
 
 # 安装 Python 依赖
