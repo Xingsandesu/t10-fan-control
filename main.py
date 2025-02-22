@@ -4,7 +4,12 @@ from pynvml import (
     nvmlDeviceGetHandleByIndex,
     nvmlDeviceGetTemperature,
     NVML_TEMPERATURE_GPU,
-    NVMLError
+    NVMLError,
+    nvmlDeviceGetCount,
+    nvmlDeviceGetName,
+    nvmlDeviceGetMemoryInfo,
+    nvmlDeviceGetPowerUsage,
+    nvmlDeviceGetFanSpeed
 )
 from loguru import logger
 import argparse
@@ -18,13 +23,6 @@ logger.add(
     sys.stdout,
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{message}</cyan>",
     level="INFO"
-)
-logger.add(
-    "gpu_fan.log",
-    rotation="10 MB",
-    retention="1 week",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
-    level="DEBUG"
 )
 
 def get_gpu_temp():
@@ -65,12 +63,65 @@ def calculate_fan_speed(temp):
     # 使用精确的整数运算公式
     return ((temp - MIN_TEMP) * (MAX_SPEED - MIN_SPEED)) // (MAX_TEMP - MIN_TEMP) + MIN_SPEED
 
+def print_gpu_info():
+    """打印所有GPU的详细信息"""
+    try:
+        nvmlInit()
+        deviceCount = nvmlDeviceGetCount()
+        logger.info(f"系统中发现 {deviceCount} 个 GPU 设备:")
+        
+        for i in range(deviceCount):
+            handle = nvmlDeviceGetHandleByIndex(i)
+            
+            # 获取基本信息
+            name = nvmlDeviceGetName(handle)
+            temp = nvmlDeviceGetTemperature(handle, NVML_TEMPERATURE_GPU)
+            
+            # 获取内存信息
+            memory = nvmlDeviceGetMemoryInfo(handle)
+            memory_total = memory.total / 1024**2  # 转换为MB
+            memory_used = memory.used / 1024**2
+            memory_free = memory.free / 1024**2
+            
+            # 获取功耗信息（可能某些GPU不支持）
+            try:
+                power = nvmlDeviceGetPowerUsage(handle) / 1000.0  # 转换为瓦特
+            except NVMLError:
+                power = None
+                
+            # 获取风扇转速（可能某些GPU不支持）
+            try:
+                fan = nvmlDeviceGetFanSpeed(handle)
+            except NVMLError:
+                fan = None
+            
+            logger.info(f"\nGPU {i}: {name}")
+            logger.info(f"温度: {temp}°C")
+            logger.info(f"显存: 已用 {memory_used:.0f}MB / 总共 {memory_total:.0f}MB (剩余 {memory_free:.0f}MB)")
+            if power is not None:
+                logger.info(f"功耗: {power:.1f}W")
+            if fan is not None:
+                logger.info(f"风扇转速: {fan}%")
+                
+    except NVMLError as e:
+        logger.error(f"获取GPU信息时出错: {e}")
+    finally:
+        nvmlShutdown()
+
     
 def main():
     parser = argparse.ArgumentParser(description='GPU 风扇控制程序')
-    parser.add_argument('pwm_path', help='风扇 PWM 控制文件路径')
+    parser.add_argument('pwm_path', nargs='?', help='风扇 PWM 控制文件路径')
     parser.add_argument('--interval', type=float, default=2.0, help='检查间隔(秒)')
+    parser.add_argument('--info', action='store_true', help='显示GPU详细信息后退出')
     args = parser.parse_args()
+    
+    if args.info:
+        print_gpu_info()
+        return 0
+    
+    if not args.pwm_path:
+        parser.error("需要提供 PWM 控制文件路径，除非使用 --info 选项")
 
     # 验证PWM文件路径
     if not os.path.exists(args.pwm_path):
