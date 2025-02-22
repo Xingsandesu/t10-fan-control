@@ -6,10 +6,8 @@ docker build -t gpu-fan-builder .
 docker run -it --rm -v $(pwd):/app gpu-fan-builder
 
 python3 -m nuitka \
-    --follow-imports \
-    --standalone \
+    --mode=standalone \
     --onefile \
-    --assume-yes-for-downloads \
     --include-module=pynvml \
     --include-package=loguru \
     main.py
