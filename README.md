@@ -23,8 +23,10 @@ pip install pynvml loguru
 
 ### 直接运行
 
+- 其实直接从Actions里面下载编译好的二进制就可以运行了
+
 ```bash
-python nvpwm.py /sys/class/hwmon/hwmon1/pwm1
+python main.py /sys/class/hwmon/hwmon1/pwm1
 ```
 
 参数说明:
@@ -36,7 +38,7 @@ python nvpwm.py /sys/class/hwmon/hwmon1/pwm1
 1. 复制程序到指定位置:
 ```bash
 sudo mkdir -p /opt/gpu-fan-control
-sudo cp nvpwm.py /opt/gpu-fan-control/
+sudo cp main.py /opt/gpu-fan-control/
 ```
 
 2. 创建服务文件:
@@ -51,12 +53,6 @@ sudo systemctl enable gpu-fan-control
 sudo systemctl start gpu-fan-control
 ```
 
-### 编译安装(Windows)
-
-使用提供的构建脚本:
-```bash
-python build.py
-```
 
 ## 配置说明
 
