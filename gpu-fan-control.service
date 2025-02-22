@@ -1,0 +1,17 @@
+[Unit]
+Description=GPU Fan Control Service
+After=network-online.target
+Wants=network-online.target
+Requires=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/gpu-fan-control/nvpwm.py /sys/class/hwmon/hwmon1/pwm1
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/gpu-fan.log
+StandardError=append:/var/log/gpu-fan.log
+
+[Install]
+WantedBy=multi-user.target
