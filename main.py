@@ -18,12 +18,42 @@ import os
 import sys
 
 # 配置日志记录
-logger.remove()  # 移除默认处理程序
+logger.remove()
 logger.add(
     sys.stdout,
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{message}</cyan>",
     level="INFO"
 )
+
+def find_enable_path(pwm_path):
+    """从 PWM 路径推测 enable 路径
+    例如: /sys/class/hwmon/hwmon4/pwm1 -> /sys/class/hwmon/hwmon4/pwm1_enable
+    """
+    return pwm_path + '_enable'
+
+def set_pwm_mode(pwm_path, mode=1):
+    """设置PWM控制模式 (1=手动, 2=自动)"""
+    try:
+        enable_path = find_enable_path(pwm_path)
+        if not os.path.exists(enable_path):
+            logger.error(f"PWM使能文件不存在: {enable_path}")
+            return False
+            
+        with open(enable_path, 'r') as f:
+            current_mode = int(f.read().strip())
+            
+        if current_mode != mode:
+            try:
+                with open(enable_path, 'w') as f:
+                    f.write(str(mode))
+                logger.info(f"PWM模式已设置为: {'手动' if mode == 1 else '自动'}")
+            except (IOError, OSError) as e:
+                logger.error(f"无法设置PWM模式: {e}")
+                return False
+        return True
+    except Exception as e:
+        logger.error(f"设置PWM模式时发生错误: {e}")
+        return False
 
 def get_gpu_temp():
     """获取 GPU 温度"""
@@ -79,17 +109,17 @@ def print_gpu_info():
             
             # 获取内存信息
             memory = nvmlDeviceGetMemoryInfo(handle)
-            memory_total = memory.total / 1024**2  # 转换为MB
+            memory_total = memory.total / 1024**2
             memory_used = memory.used / 1024**2
             memory_free = memory.free / 1024**2
             
-            # 获取功耗信息（可能某些GPU不支持）
+            # 获取功耗信息
             try:
-                power = nvmlDeviceGetPowerUsage(handle) / 1000.0  # 转换为瓦特
+                power = nvmlDeviceGetPowerUsage(handle) / 1000.0
             except NVMLError:
                 power = None
                 
-            # 获取风扇转速（可能某些GPU不支持）
+            # 获取风扇转速
             try:
                 fan = nvmlDeviceGetFanSpeed(handle)
             except NVMLError:
@@ -108,7 +138,6 @@ def print_gpu_info():
     finally:
         nvmlShutdown()
 
-    
 def main():
     parser = argparse.ArgumentParser(description='GPU 风扇控制程序')
     parser.add_argument('pwm_path', nargs='?', help='风扇 PWM 控制文件路径')
@@ -137,10 +166,16 @@ def main():
         global handle
         handle = nvmlDeviceGetHandleByIndex(0)
         
-        # 确保程序退出时恢复默认风扇速度
+        # 设置PWM为手动模式
+        if not set_pwm_mode(args.pwm_path, mode=1):
+            logger.error("无法设置PWM为手动模式，程序退出")
+            return 1
+        
+        # 确保程序退出时恢复默认设置
         def cleanup():
             try:
                 set_fan_speed(args.pwm_path, 77)  # 恢复到30%的默认速度
+                set_pwm_mode(args.pwm_path, mode=2)  # 恢复自动模式
                 nvmlShutdown()
             except:
                 pass
@@ -148,17 +183,27 @@ def main():
         import atexit
         atexit.register(cleanup)
         
+        # 记录上一次的温度和转速
+        last_temp = 0
+        last_speed = 0
+        
         logger.info(f"正在监控 GPU 温度，使用 PWM 路径: {args.pwm_path}")
         
         while True:
             temp = get_gpu_temp()
             if temp > 0:
                 speed = calculate_fan_speed(temp)
-                set_fan_speed(args.pwm_path, speed)
-                logger.info(f"温度: {temp}°C, 风扇转速: {int(speed)}/255 ({int(speed/255*100)}%)")
+                # 只在温度或转速发生变化时才更新和输出日志
+                if temp != last_temp or speed != last_speed:
+                    set_fan_speed(args.pwm_path, speed)
+                    logger.info(f"温度: {temp}°C, 风扇转速: {int(speed)}/255 ({int(speed/255*100)}%)")
+                    last_temp = temp
+                    last_speed = speed
             else:
-                logger.warning("无法获取GPU温度，使用默认转速")
-                set_fan_speed(args.pwm_path, 77)
+                if last_speed != 77:  # 只在需要改变时设置默认转速
+                    logger.warning("无法获取GPU温度，使用默认转速")
+                    set_fan_speed(args.pwm_path, 77)
+                    last_speed = 77
             time.sleep(args.interval)
             
     except KeyboardInterrupt:
