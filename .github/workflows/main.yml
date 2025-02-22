@@ -39,10 +39,7 @@ jobs:
           product-name: T10
           file-version: ${{ github.ref_name }}
           product-version: ${{ github.ref_name }}
-          standalone: true
-          show-scons: true
-          onefile: true
-          static-libpython: yes
+          mode: app
           lto: yes
           
 
